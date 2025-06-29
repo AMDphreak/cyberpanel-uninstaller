@@ -9,10 +9,9 @@
 # Gemini was used to integrate specific knowledge from the installer script and help pages
 # with general knowledge of Linux environment and AlmaLinux in particular.
 
-# Exit immediately if a command exits with a non-zero status.
-# Changed to allow specific failures to be handled without immediate script exit.
-# Individual commands now use '|| true' or explicit error handling where expected.
-set -e
+# Do NOT exit immediately on non-zero status. We want to complete as many steps as possible.
+# Individual commands will use '|| true' or explicit error handling where appropriate.
+set +e
 
 # --- Initial Script Setup and Warnings ---
 echo "#####################################################################"
@@ -43,23 +42,22 @@ fi
 
 echo ""
 echo "Starting CyberPanel uninstallation process..."
-# The DNF update command was removed as per user request to avoid system-wide updates during uninstallation.
 echo "Skipping DNF update to focus on uninstallation tasks."
 echo ""
 
 ## Helper Function for DNF Package Removal
 # This function attempts to remove a package using dnf.
 # It explicitly excludes kernel-related packages to prevent system breakage.
-# If the dnf removal fails (e.g., due to a scriptlet error), it attempts a force removal
-# from the RPM database using `rpm -e --noscripts --nodeps`.
+# If the dnf removal fails (e.g., due to a scriptlet error), it will explicitly
+# inform the user about the issue and the potential manual steps required,
+# but WILL NOT automatically force-remove packages that cause system instability.
 # If the package is not found, it prints a message and skips.
 remove_package_if_installed() {
-    PACKAGE_NAME=$1
+    local PACKAGE_NAME=$1
     echo "Attempting to remove package: $PACKAGE_NAME"
 
-    # Define a list of critical kernel packages to always exclude from removal
-    # This is a safeguard against DNF trying to remove core system components
-    local -a KERNEL_EXCLUDE_PACKAGES=(
+    # Define a list of critical kernel and system packages to always exclude from removal
+    local -a CRITICAL_EXCLUDE_PACKAGES=(
         "kernel"
         "kernel-core"
         "kernel-modules"
@@ -67,11 +65,15 @@ remove_package_if_installed() {
         "kernel-headers"
         "glibc" # Very fundamental C library
         "systemd" # Init system
+        "dnf"     # The package manager itself
+        "rpm"     # RPM Package Manager
+        "bash"    # Shell
+        "filesystem" # Core file system structure
     )
 
     # Build the --exclude string for dnf
     local EXCLUDE_FLAGS=""
-    for pkg in "${KERNEL_EXCLUDE_PACKAGES[@]}"; do
+    for pkg in "${CRITICAL_EXCLUDE_PACKAGES[@]}"; do
         EXCLUDE_FLAGS+=" --exclude=$pkg"
     done
 
@@ -92,29 +94,21 @@ remove_package_if_installed() {
     else
         echo "Error: dnf remove for $PACKAGE_NAME failed."
         echo "  This is likely due to a pre-uninstallation scriptlet error (e.g., exit status 127) or complex dependencies."
-        echo "  Attempting force removal of RPM database entry using 'rpm -e --noscripts --nodeps'."
 
-        # Attempt to force remove via rpm, ignoring scriptlets and dependencies for this specific problematic removal.
-        # This is a powerful command and used as a last resort for stubborn packages.
-        # Redirect stderr to /dev/null for expected warnings from rpm itself after initial file removal.
-        if rpm -e --noscripts --nodeps "$PACKAGE_NAME" 2>/dev/null; then
-            echo "  Successfully force-removed $PACKAGE_NAME from RPM database using rpm --noscripts --nodeps."
-            echo "  Note: You might have seen 'No such file or directory' warnings from rpm; these are expected"
-            echo "  when force-removing packages whose associated files/directories were already manually removed."
-            # After forced removal of the database entry, clean up any remaining files if known.
-            if [[ "$PACKAGE_NAME" == "openlitespeed" ]]; then
-                 echo "  Cleaning up /usr/local/lsws directory after force removal."
-                 rm -rf /usr/local/lsws || true
-            fi
-            echo "" # For readability
-            return 0 # Indicate success in removal from database
+        # Special handling for OpenLiteSpeed, which is known to cause severe issues
+        if [[ "$PACKAGE_NAME" == "openlitespeed" ]]; then
+            echo "  CRITICAL PACKAGE: OpenLiteSpeed removal failed. This package is known to have problematic uninstall scriptlets."
+            echo "  Automatically forcing its removal can lead to an unbootable system."
+            echo "  If you are prepared for potential system repair or OS reinstallation, you may try:"
+            echo "  -> sudo rpm -e --noscripts --nodeps openlitespeed"
+            echo "  -> THEN re-run this script."
+            echo "  This script WILL NOT automatically force-remove 'openlitespeed' due to high risk."
         else
-            echo "  CRITICAL ERROR: Force removal of $PACKAGE_NAME with rpm --noscripts --nodeps also failed."
-            echo "  Manual intervention for this package is absolutely required. Please consult documentation or a sysadmin."
-            echo "  This script will continue, but ensure this package is dealt with manually."
-            echo "" # For readability
-            return 1 # Indicate failure to remove package
+            echo "  For this package ($PACKAGE_NAME), consider running 'dnf remove --assumeno $PACKAGE_NAME' to inspect dependencies, or 'rpm -e --noscripts --nodeps $PACKAGE_NAME' as a last resort."
+            echo "  This script will continue, but ensure this package is dealt with manually if it's critical."
         fi
+        echo "" # For readability
+        return 1 # Indicate failure to remove package cleanly
     fi
 }
 
@@ -236,9 +230,10 @@ echo "Removing core CyberPanel packages via DNF..."
 
 # LiteSpeed PHP (lsphp) versions
 # CyberPanel installs various lsphpXX packages. We'll try to remove all of them.
+# Removing lsphp* before openlitespeed as lsphp depends on openlitespeed
 remove_package_if_installed "lsphp*"
 
-# OpenLiteSpeed Web Server
+# OpenLiteSpeed Web Server - This is handled very cautiously due to past issues
 remove_package_if_installed "openlitespeed"
 remove_package_if_installed "openlitespeed-extra" # Extra packages for OLS
 
@@ -288,7 +283,7 @@ remove_package_if_installed "opendkim"
 
 # Remove any remaining orphaned dependencies, explicitly excluding kernel-related packages
 echo "Running dnf autoremove to clean up orphaned dependencies..."
-dnf autoremove -y --exclude=kernel* --exclude=glibc --exclude=systemd || true
+dnf autoremove -y --exclude=kernel* --exclude=glibc --exclude=systemd --exclude=dnf --exclude=rpm --exclude=bash --exclude=filesystem || true
 echo "DNF package cleanup complete."
 echo ""
 
