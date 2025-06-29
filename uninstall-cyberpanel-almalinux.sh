@@ -41,8 +41,8 @@ fi
 
 echo ""
 echo "Starting CyberPanel uninstallation process..."
-echo "Updating DNF package lists and packages to ensure a consistent state..."
-dnf update -y || { echo "WARNING: DNF update failed. Proceeding, but this might indicate underlying issues."; }
+# The DNF update command was removed as per user request to avoid system-wide updates during uninstallation.
+echo "Skipping DNF update to focus on uninstallation tasks."
 echo ""
 
 ## Helper Function for DNF Package Removal
