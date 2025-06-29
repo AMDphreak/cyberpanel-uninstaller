@@ -224,6 +224,14 @@ rm -rf /etc/opendkim || true
 echo "Manual file and directory cleanup complete."
 echo ""
 
+## ADDED: Remove PHP Session Directories
+echo "Cleaning up PHP session directories..."
+# PHP session directories are typically under /var/opt/lsws/lsphpXX/session or /tmp/lsphp_sessions
+find /var/opt/lsws/ -type d -name "session" -exec rm -rf {} + 2>/dev/null || true
+rm -rf /tmp/lsphp_sessions 2>/dev/null || true
+echo "PHP session directories cleanup complete."
+echo ""
+
 ## Phase 3: Uninstall Packages Installed by CyberPanel (using DNF for consistency)
 
 echo "Removing core CyberPanel packages via DNF..."
@@ -346,6 +354,7 @@ echo "Reverting /etc/sysctl.conf changes..."
 sed -i '/net.netfilter.nf_conntrack_max=/d' /etc/sysctl.conf || true
 sed -i '/net.nf_conntrack_max=/d' /etc/sysctl.conf || true
 sed -i '/fs.file-max = 65535/d' /etc/sysctl.conf || true
+sed -i '/vm.swappiness = 10/d' /etc/sysctl.conf || true # Added: Remove swappiness
 sysctl -p # Apply changes
 echo "sysctl.conf reverted. Run 'sysctl -p' manually if needed."
 echo ""
@@ -397,6 +406,23 @@ else
 fi
 systemctl restart systemd-networkd 2>/dev/null || true
 echo "resolv.conf and systemd-resolved changes processed."
+echo ""
+
+# ADDED: Remove CyberPanel Swap File
+echo "Checking for and removing CyberPanel swap file..."
+SWAP_FILE="/cyberpanel.swap"
+if grep -q "${SWAP_FILE}" /etc/fstab; then
+    echo "  Removing ${SWAP_FILE} entry from /etc/fstab..."
+    sed -i "\@${SWAP_FILE}@d" /etc/fstab || true
+    swapoff "${SWAP_FILE}" 2>/dev/null || true
+fi
+if [ -f "${SWAP_FILE}" ]; then
+    echo "  Removing swap file: ${SWAP_FILE}..."
+    rm -f "${SWAP_FILE}" || true
+else
+    echo "  No CyberPanel swap file found at ${SWAP_FILE}."
+fi
+echo "Swap file cleanup complete."
 echo ""
 
 # Remove CyberPanel's added DNF/YUM repositories:
@@ -526,21 +552,80 @@ else
 fi
 echo "Cron job cleanup complete."
 
-# Review user accounts (manual check recommended):
-echo "Review user accounts that might have been created by CyberPanel (e.g., 'cyberpanel', 'lsadm', 'pure-ftpd')."
-echo "Run 'cat /etc/passwd' and 'cat /etc/group' to inspect. Only remove if SURE they are not needed by other services."
-echo "Example commands (use with extreme caution if not a dedicated server):"
-echo "  userdel cyberpanel"
-echo "  groupdel cyberpanel"
-echo "  userdel lsadm" # Often related to LiteSpeed
-echo "  groupdel lsadm"
+# ADDED: Remove Website Data and Associated Users
+echo "Checking for and removing website data and associated users..."
+# CyberPanel stores website data in /home/<domain.com>
+# It also creates a 'cyberpanel' user and potentially other users like 'lsadm'.
+# This section focuses on typical website data removal and prompts for user deletion.
+
+read -r -p "Do you want to remove website data and associated users (e.g., /home/yourdomain.com)? This is destructive (y/N)? " CONFIRM_WEBSITE_DATA
+if [[ "$CONFIRM_WEBSITE_DATA" =~ ^[Yy]$ ]]; then
+    echo "  Listing directories in /home/. Please confirm which ones are related to CyberPanel websites and need deletion."
+    echo "  WARNING: Deleting directories here will remove ALL their content. PROCEED WITH CAUTION!"
+    ls -d /home/*/ 2>/dev/null || true # List all directories in /home/
+
+    read -r -p "  Enter space-separated list of /home/ directories to delete (e.g., /home/domain1.com /home/domain2.net) or press Enter to skip: " DIRS_TO_DELETE
+    if [ -n "$DIRS_TO_DELETE" ]; then
+        for dir in $DIRS_TO_DELETE; do
+            if [ -d "$dir" ]; then
+                echo "  Deleting directory: $dir..."
+                rm -rf "$dir" || true
+            else
+                echo "  Warning: Directory $dir not found. Skipping."
+            fi
+        done
+    fi
+
+    echo "  Checking for CyberPanel-related system users ('cyberpanel', 'lsadm', 'pure-ftpd')."
+    echo "  Confirm removal for each. Be cautious if these users are used by other services."
+
+    # CyberPanel user
+    if id "cyberpanel" &>/dev/null; then
+        read -r -p "  User 'cyberpanel' found. Remove this user and its home directory (y/N)? " REMOVE_CYBERPANEL_USER
+        if [[ "$REMOVE_CYBERPANEL_USER" =~ ^[Yy]$ ]]; then
+            echo "  Removing user 'cyberpanel' and home directory..."
+            userdel -r cyberpanel || true
+            groupdel cyberpanel 2>/dev/null || true # Attempt to remove group if exists
+        else
+            echo "  Skipping removal of user 'cyberpanel'."
+        fi
+    fi
+
+    # lsadm user (LiteSpeed Admin)
+    if id "lsadm" &>/dev/null; then
+        read -r -p "  User 'lsadm' found (LiteSpeed Admin). Remove this user and its home directory (y/N)? " REMOVE_LSADM_USER
+        if [[ "$REMOVE_LSADM_USER" =~ ^[Yy]$ ]]; then
+            echo "  Removing user 'lsadm' and home directory..."
+            userdel -r lsadm || true
+            groupdel lsadm 2>/dev/null || true # Attempt to remove group if exists
+        else
+            echo "  Skipping removal of user 'lsadm'."
+        fi
+    fi
+
+    # pure-ftpd user (if created separately)
+    if id "pure-ftpd" &>/dev/null; then
+        read -r -p "  User 'pure-ftpd' found. Remove this user and its home directory (y/N)? " REMOVE_PUREFTPD_USER
+        if [[ "$REMOVE_PUREFTPD_USER" =~ ^[Yy]$ ]]; then
+            echo "  Removing user 'pure-ftpd' and home directory..."
+            userdel -r pure-ftpd || true
+            groupdel pure-ftpd 2>/dev/null || true # Attempt to remove group if exists
+        else
+            echo "  Skipping removal of user 'pure-ftpd'."
+        fi
+    fi
+    echo "Website data and user cleanup section completed."
+else
+    echo "Skipping removal of website data and associated users."
+fi
+echo ""
 
 # Final reboot recommendation
 echo ""
 echo "#####################################################"
-echo "  CyberPanel uninstallation script has completed.    "
-echo "  It is HIGHLY RECOMMENDED to REBOOT your server     "
-    echo "  now to ensure all changes take full effect.        "
+echo "#  CyberPanel uninstallation script has completed.    #"
+echo "#  It is HIGHLY RECOMMENDED to REBOOT your server     #"
+echo "#  now to ensure all changes take full effect.        #"
 echo "#####################################################"
 read -r -p "Would you like to reboot your server now (y/N)? " REBOOT_CONFIRM
 if [[ "$REBOOT_CONFIRM" =~ ^[Yy]$ ]]; then
@@ -548,4 +633,3 @@ if [[ "$REBOOT_CONFIRM" =~ ^[Yy]$ ]]; then
 else
     echo "Reboot skipped. Please remember to reboot your server soon."
 fi
-
