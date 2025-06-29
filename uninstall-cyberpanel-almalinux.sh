@@ -149,14 +149,16 @@ echo ""
 echo "Removing CyberPanel directories and loose files..."
 
 # Remove CyberPanel's main installation directory and virtual environment:
-echo "Removing /usr/local/CyberCP and /usr/local/cyberpanel..."
-rm -rf /usr/local/CyberCP || true
-rm -rf /usr/local/cyberpanel || true
+echo "Removing /usr/local/CyberCP and /usr/local/CyberPanel..."
+rm -rf /usr/local/CyberCP || true # Already in script
+rm -rf /usr/local/CyberPanel || true # Added: Handle capital P variation
 
 # Remove LiteSpeed/OpenLiteSpeed web server files
-echo "Removing /usr/local/lsws and /usr/local/lscp..."
+echo "Removing /usr/local/lsws, /usr/local/lscp, /usr/local/lscpd, and /usr/local/lsmcd..."
 rm -rf /usr/local/lsws || true
 rm -rf /usr/local/lscp || true # If present
+rm -rf /usr/local/lscpd || true # Added: LSCPD directory
+rm -rf /usr/local/lsmcd || true # Added: LSMCD directory
 
 # Remove CyberPanel configuration files:
 echo "Removing /etc/cyberpanel..."
@@ -530,6 +532,10 @@ if [ -L /usr/local/bin/watchdog ]; then
     echo "  /usr/local/bin/watchdog is a symlink. Removing."
     rm -f /usr/local/bin/watchdog || true
 fi
+if [ -L /bin/cyberpanel ]; then # Added: /bin/cyberpanel symlink
+    echo "  /bin/cyberpanel is a symlink. Removing."
+    rm -f /bin/cyberpanel || true
+fi
 echo "Symlink cleanup complete."
 
 # Check cron jobs for root:
@@ -558,13 +564,13 @@ echo "Checking for and removing website data and associated users..."
 # It also creates a 'cyberpanel' user and potentially other users like 'lsadm'.
 # This section focuses on typical website data removal and prompts for user deletion.
 
-read -r -p "Do you want to remove website data and associated users (e.g., /home/yourdomain.com)? This is destructive (y/N)? " CONFIRM_WEBSITE_DATA
+read -r -p "Do you want to remove website data and associated users (e.g., /home/yourdomain.com, /home/vmail)? This is destructive (y/N)? " CONFIRM_WEBSITE_DATA
 if [[ "$CONFIRM_WEBSITE_DATA" =~ ^[Yy]$ ]]; then
     echo "  Listing directories in /home/. Please confirm which ones are related to CyberPanel websites and need deletion."
     echo "  WARNING: Deleting directories here will remove ALL their content. PROCEED WITH CAUTION!"
     ls -d /home/*/ 2>/dev/null || true # List all directories in /home/
 
-    read -r -p "  Enter space-separated list of /home/ directories to delete (e.g., /home/domain1.com /home/domain2.net) or press Enter to skip: " DIRS_TO_DELETE
+    read -r -p "  Enter space-separated list of /home/ directories to delete (e.g., /home/domain1.com /home/vmail) or press Enter to skip: " DIRS_TO_DELETE
     if [ -n "$DIRS_TO_DELETE" ]; then
         for dir in $DIRS_TO_DELETE; do
             if [ -d "$dir" ]; then
@@ -618,6 +624,19 @@ if [[ "$CONFIRM_WEBSITE_DATA" =~ ^[Yy]$ ]]; then
 else
     echo "Skipping removal of website data and associated users."
 fi
+echo ""
+
+# Manual check for virtualenv if desired
+echo "Note: The 'virtualenv' tool at /usr/local/bin/virtualenv was installed by CyberPanel."
+echo "If you intend to use Python virtual environments for other purposes, it's safe to leave it."
+echo "If CyberPanel was its sole purpose, you may consider removing it manually:"
+echo "  sudo rm -f /usr/local/bin/virtualenv"
+echo ""
+
+# Manual check for /etc/alternatives for MTA
+echo "Checking /etc/alternatives for MTA configuration (e.g., if Postfix was default)."
+echo "You can check currently configured MTA with: alternatives --display mta"
+echo "Normally, uninstalling Postfix (via dnf) should revert this. Verify if needed."
 echo ""
 
 # Final reboot recommendation
