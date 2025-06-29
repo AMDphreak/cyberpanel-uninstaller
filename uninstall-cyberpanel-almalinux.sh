@@ -96,8 +96,11 @@ remove_package_if_installed() {
 
         # Attempt to force remove via rpm, ignoring scriptlets and dependencies for this specific problematic removal.
         # This is a powerful command and used as a last resort for stubborn packages.
-        if rpm -e --noscripts --nodeps "$PACKAGE_NAME"; then
+        # Redirect stderr to /dev/null for expected warnings from rpm itself after initial file removal.
+        if rpm -e --noscripts --nodeps "$PACKAGE_NAME" 2>/dev/null; then
             echo "  Successfully force-removed $PACKAGE_NAME from RPM database using rpm --noscripts --nodeps."
+            echo "  Note: You might have seen 'No such file or directory' warnings from rpm; these are expected"
+            echo "  when force-removing packages whose associated files/directories were already manually removed."
             # After forced removal of the database entry, clean up any remaining files if known.
             if [[ "$PACKAGE_NAME" == "openlitespeed" ]]; then
                  echo "  Cleaning up /usr/local/lsws directory after force removal."
@@ -379,17 +382,23 @@ else
 fi
 
 echo "Checking and potentially re-enabling systemd-resolved..."
-if systemctl is-enabled systemd-resolved.service &>/dev/null; then
-    echo "systemd-resolved is already enabled."
-elif systemctl is-masked systemd-resolved.service &>/dev/null; then
-    echo "systemd-resolved is masked. Unmasking, enabling, and starting."
-    systemctl unmask systemd-resolved.service || true
-    systemctl enable systemd-resolved.service || true
-    systemctl start systemd-resolved.service || true
+# Check if systemd-resolved.service unit file actually exists before trying to manage it
+if [ -f /usr/lib/systemd/system/systemd-resolved.service ] || [ -f /etc/systemd/system/systemd-resolved.service ]; then
+    if systemctl is-enabled systemd-resolved.service &>/dev/null; then
+        echo "systemd-resolved is already enabled."
+    elif systemctl is-masked systemd-resolved.service &>/dev/null; then
+        echo "systemd-resolved is masked. Unmasking, enabling, and starting."
+        systemctl unmask systemd-resolved.service || true
+        systemctl enable systemd-resolved.service || true
+        systemctl start systemd-resolved.service || true
+    else
+        echo "systemd-resolved is not enabled or masked. Enabling and starting."
+        systemctl enable systemd-resolved.service || true
+        systemctl start systemd-resolved.service || true
+    fi
 else
-    echo "systemd-resolved is not enabled or masked. Enabling and starting."
-    systemctl enable systemd-resolved.service || true
-    systemctl start systemd-resolved.service || true
+    echo "systemd-resolved.service unit file not found. Skipping re-enabling/starting of systemd-resolved."
+    echo "If you manually installed systemd-resolved and it's not starting, please check its installation."
 fi
 systemctl restart systemd-networkd 2>/dev/null || true
 echo "resolv.conf and systemd-resolved changes processed."
