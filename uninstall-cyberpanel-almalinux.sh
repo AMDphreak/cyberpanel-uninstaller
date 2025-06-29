@@ -74,14 +74,25 @@ remove_package_if_installed() {
 
     if dnf list installed "$PACKAGE_NAME" &>/dev/null; then
         echo "Package $PACKAGE_NAME is installed. Proceeding with removal."
-        # Use --allowerasing if needed, but primarily rely on explicit removal.
-        # Add the exclude flags to prevent accidental kernel removal.
+        # Attempt dnf remove. If it fails, check for specific known issues like OpenLiteSpeed scriptlets.
         if ! dnf remove -y "$PACKAGE_NAME" $EXCLUDE_FLAGS; then
-            echo "Error: Failed to remove $PACKAGE_NAME via dnf."
-            echo "  This might be due to dependencies. Manual intervention may be required."
-            echo "  Consider running 'dnf remove --assumeno $PACKAGE_NAME' to inspect dependencies."
-            echo "  If you are certain this package is safe to force-remove without breaking core system, use 'rpm -e --noscripts $PACKAGE_NAME' as a last resort."
-            # Do not exit here, allow other removals to proceed if possible.
+            # Specific handling for OpenLiteSpeed's known preun scriptlet failure
+            if [[ "$PACKAGE_NAME" == "openlitespeed" ]]; then
+                echo "  dnf remove for $PACKAGE_NAME failed (likely due to a pre-uninstallation scriptlet)."
+                echo "  Attempting force removal with 'rpm -e --noscripts'."
+                # Attempt to force remove via rpm, allowing non-critical rpm failures (e.g., if files are already gone)
+                if rpm -e --noscripts "$PACKAGE_NAME" || true; then
+                    echo "  Successfully force-removed $PACKAGE_NAME using rpm --noscripts."
+                else
+                    echo "  ERROR: Force removal of $PACKAGE_NAME with rpm --noscripts also failed. Manual intervention for this package is required."
+                fi
+            else
+                echo "Error: Failed to remove $PACKAGE_NAME via dnf."
+                echo "  This might be due to dependencies. Manual intervention may be required."
+                echo "  Consider running 'dnf remove --assumeno $PACKAGE_NAME' to inspect dependencies."
+                echo "  If you are certain this package is safe to force-remove without breaking core system, use 'rpm -e --noscripts $PACKAGE_NAME' as a last resort."
+            fi
+            # Do not exit here; allow other package removals to proceed if possible.
         else
             echo "Successfully removed $PACKAGE_NAME."
         fi
@@ -213,7 +224,7 @@ remove_package_if_installed "lsphp*"
 
 # OpenLiteSpeed Web Server
 remove_package_if_installed "openlitespeed"
-remove_package_if_installed "openlitespeed-extra"
+remove_package_if_installed "openlitespeed-extra" # Extra packages for OLS
 
 # MariaDB/MySQL Database
 remove_package_if_installed "mariadb-server"
@@ -231,6 +242,7 @@ remove_package_if_installed "pdns-backend-mysql" # Common backend, might vary
 remove_package_if_installed "memcached"
 remove_package_if_installed "lsphp*-memcached"
 remove_package_if_installed "lsphp*-pecl-memcached" # Specific PECL module
+remove_package_if_installed "lsmcd" # LiteSpeed Memcached Daemon
 
 # Redis (service and PHP extension)
 remove_package_if_installed "redis"
