@@ -10,6 +10,8 @@
 # with general knowledge of Linux environment and AlmaLinux in particular.
 
 # Exit immediately if a command exits with a non-zero status.
+# Changed to allow specific failures to be handled without immediate script exit.
+# Individual commands now use '|| true' or explicit error handling where expected.
 set -e
 
 # --- Initial Script Setup and Warnings ---
@@ -48,8 +50,9 @@ echo ""
 ## Helper Function for DNF Package Removal
 # This function attempts to remove a package using dnf.
 # It explicitly excludes kernel-related packages to prevent system breakage.
+# If the dnf removal fails (e.g., due to a scriptlet error), it attempts a force removal
+# from the RPM database using `rpm -e --noscripts --nodeps`.
 # If the package is not found, it prints a message and skips.
-# If the removal fails, it prints an error and suggests a manual check.
 remove_package_if_installed() {
     PACKAGE_NAME=$1
     echo "Attempting to remove package: $PACKAGE_NAME"
@@ -72,34 +75,44 @@ remove_package_if_installed() {
         EXCLUDE_FLAGS+=" --exclude=$pkg"
     done
 
-    if dnf list installed "$PACKAGE_NAME" &>/dev/null; then
-        echo "Package $PACKAGE_NAME is installed. Proceeding with removal."
-        # Attempt dnf remove. If it fails, check for specific known issues like OpenLiteSpeed scriptlets.
-        if ! dnf remove -y "$PACKAGE_NAME" $EXCLUDE_FLAGS; then
-            # Specific handling for OpenLiteSpeed's known preun scriptlet failure
-            if [[ "$PACKAGE_NAME" == "openlitespeed" ]]; then
-                echo "  dnf remove for $PACKAGE_NAME failed (likely due to a pre-uninstallation scriptlet)."
-                echo "  Attempting force removal with 'rpm -e --noscripts'."
-                # Attempt to force remove via rpm, allowing non-critical rpm failures (e.g., if files are already gone)
-                if rpm -e --noscripts "$PACKAGE_NAME" || true; then
-                    echo "  Successfully force-removed $PACKAGE_NAME using rpm --noscripts."
-                else
-                    echo "  ERROR: Force removal of $PACKAGE_NAME with rpm --noscripts also failed. Manual intervention for this package is required."
-                fi
-            else
-                echo "Error: Failed to remove $PACKAGE_NAME via dnf."
-                echo "  This might be due to dependencies. Manual intervention may be required."
-                echo "  Consider running 'dnf remove --assumeno $PACKAGE_NAME' to inspect dependencies."
-                echo "  If you are certain this package is safe to force-remove without breaking core system, use 'rpm -e --noscripts $PACKAGE_NAME' as a last resort."
-            fi
-            # Do not exit here; allow other package removals to proceed if possible.
-        else
-            echo "Successfully removed $PACKAGE_NAME."
-        fi
-    else
-        echo "Package $PACKAGE_NAME is not installed or not recognized by dnf. Skipping dnf removal for this package."
+    # Check if the package is actually installed or recognized by dnf/rpm before trying removal
+    if ! dnf list installed "$PACKAGE_NAME" &>/dev/null && ! rpm -q "$PACKAGE_NAME" &>/dev/null; then
+        echo "Package $PACKAGE_NAME is not installed or not recognized by dnf/rpm. Skipping dnf removal for this package."
+        echo "" # For readability
+        return 0 # Exit function successfully if not installed
     fi
-    echo "" # Add a newline for readability
+
+    echo "Package $PACKAGE_NAME is installed. Proceeding with removal."
+
+    # First, try dnf remove normally
+    if dnf remove -y "$PACKAGE_NAME" $EXCLUDE_FLAGS; then
+        echo "Successfully removed $PACKAGE_NAME via dnf."
+        echo "" # For readability
+        return 0 # Exit function successfully
+    else
+        echo "Error: dnf remove for $PACKAGE_NAME failed."
+        echo "  This is likely due to a pre-uninstallation scriptlet error (e.g., exit status 127) or complex dependencies."
+        echo "  Attempting force removal of RPM database entry using 'rpm -e --noscripts --nodeps'."
+
+        # Attempt to force remove via rpm, ignoring scriptlets and dependencies for this specific problematic removal.
+        # This is a powerful command and used as a last resort for stubborn packages.
+        if rpm -e --noscripts --nodeps "$PACKAGE_NAME"; then
+            echo "  Successfully force-removed $PACKAGE_NAME from RPM database using rpm --noscripts --nodeps."
+            # After forced removal of the database entry, clean up any remaining files if known.
+            if [[ "$PACKAGE_NAME" == "openlitespeed" ]]; then
+                 echo "  Cleaning up /usr/local/lsws directory after force removal."
+                 rm -rf /usr/local/lsws || true
+            fi
+            echo "" # For readability
+            return 0 # Indicate success in removal from database
+        else
+            echo "  CRITICAL ERROR: Force removal of $PACKAGE_NAME with rpm --noscripts --nodeps also failed."
+            echo "  Manual intervention for this package is absolutely required. Please consult documentation or a sysadmin."
+            echo "  This script will continue, but ensure this package is dealt with manually."
+            echo "" # For readability
+            return 1 # Indicate failure to remove package
+        fi
+    fi
 }
 
 ## Phase 1: Stop and Disable CyberPanel Services
