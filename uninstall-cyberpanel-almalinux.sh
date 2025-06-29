@@ -548,3 +548,4 @@ if [[ "$REBOOT_CONFIRM" =~ ^[Yy]$ ]]; then
 else
     echo "Reboot skipped. Please remember to reboot your server soon."
 fi
+
