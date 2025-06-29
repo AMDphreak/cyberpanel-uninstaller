@@ -47,16 +47,40 @@ echo ""
 
 ## Helper Function for DNF Package Removal
 # This function attempts to remove a package using dnf.
+# It explicitly excludes kernel-related packages to prevent system breakage.
 # If the package is not found, it prints a message and skips.
 # If the removal fails, it prints an error and suggests a manual check.
 remove_package_if_installed() {
     PACKAGE_NAME=$1
     echo "Attempting to remove package: $PACKAGE_NAME"
+
+    # Define a list of critical kernel packages to always exclude from removal
+    # This is a safeguard against DNF trying to remove core system components
+    local -a KERNEL_EXCLUDE_PACKAGES=(
+        "kernel"
+        "kernel-core"
+        "kernel-modules"
+        "kernel-modules-core"
+        "kernel-headers"
+        "glibc" # Very fundamental C library
+        "systemd" # Init system
+    )
+
+    # Build the --exclude string for dnf
+    local EXCLUDE_FLAGS=""
+    for pkg in "${KERNEL_EXCLUDE_PACKAGES[@]}"; do
+        EXCLUDE_FLAGS+=" --exclude=$pkg"
+    done
+
     if dnf list installed "$PACKAGE_NAME" &>/dev/null; then
         echo "Package $PACKAGE_NAME is installed. Proceeding with removal."
-        if ! dnf remove -y "$PACKAGE_NAME"; then
-            echo "Error: Failed to remove $PACKAGE_NAME via dnf. Manual intervention may be required."
-            echo "Consider running 'dnf remove --assumeno $PACKAGE_NAME' to inspect dependencies, or 'rpm -e --noscripts $PACKAGE_NAME' as a last resort."
+        # Use --allowerasing if needed, but primarily rely on explicit removal.
+        # Add the exclude flags to prevent accidental kernel removal.
+        if ! dnf remove -y "$PACKAGE_NAME" $EXCLUDE_FLAGS; then
+            echo "Error: Failed to remove $PACKAGE_NAME via dnf."
+            echo "  This might be due to dependencies. Manual intervention may be required."
+            echo "  Consider running 'dnf remove --assumeno $PACKAGE_NAME' to inspect dependencies."
+            echo "  If you are certain this package is safe to force-remove without breaking core system, use 'rpm -e --noscripts $PACKAGE_NAME' as a last resort."
             # Do not exit here, allow other removals to proceed if possible.
         else
             echo "Successfully removed $PACKAGE_NAME."
@@ -234,9 +258,9 @@ remove_package_if_installed "opendkim"
 # remove_package_if_installed "platform-python-devel" # Specific to CentOS 8
 # remove_package_if_installed "python3-devel" # For openEuler/Ubuntu, etc.
 
-# Remove any remaining orphaned dependencies
+# Remove any remaining orphaned dependencies, explicitly excluding kernel-related packages
 echo "Running dnf autoremove to clean up orphaned dependencies..."
-dnf autoremove -y
+dnf autoremove -y --exclude=kernel* --exclude=glibc --exclude=systemd || true
 echo "DNF package cleanup complete."
 echo ""
 
