@@ -301,10 +301,47 @@ echo ""
 
 echo "Reverting system configuration changes made by CyberPanel..."
 
-# Revert SELinux to enforcing (if desired and it was permissive before)
+#####
+# Reverting SELinux to enforcing (if desired and it was permissive before)
+#####
+
+# If you set SELinux back to 'enforcing', but the kernel has SELinux disabled,
+# the system will become inaccessible, since the two settings do not agree with each other.
+# These two settings must be consistent with one another for the system to function.
+# 
+# Check the following:
+# A. Check the status of the kernel using `sestatus` and `getenforce` commands.
+#    `sestatus` outputs:
+#        - "SELinux status:                 disabled" or
+#        - "SELinux status:                 enabled"
+#    `getenforce` outputs "Disabled" or "Enabled"
+# B. Read /etc/selinux/config to check the 'enforcing' status.
+#    `cat /etc/selinux/config` outputs:
+#        You will get a dozen lines of output. Look for 'SELINUX=enforcing' or 'SELINUX=permissive'
+# SELinux must be enabled, for 'enforcing' to work. If they do not sync up, your system will
+# brick itself (become inaccessible via SSH) and will require using a rescue machine instance with
+# the main machine's drives attached to it so you can mount and browse the drives. You will
+# then have to use a complicated process to mount the broken machine's disks and connect them to the
+# Linux kernel of the rescue machine, while it is running. This is called "changing root"
+# or `chroot`ing into the broken OS to fix it.
+#
+#
 # The script sets SELINUX=permissive, change back to enforcing if that was your original state
+# The script also re-enables SELinux. I have reported the disabling of SELinux as a bug
+# to the CyberPanel team, to hopefully get them to stop breaking the security of your system.
+# See the bug report here: https://community.cyberpanel.net/t/installer-script-disables-selinux/58836
 echo "Checking SELinux configuration..."
-if grep -q "SELINUX=permissive" /etc/selinux/config; then
+if grep -q "SELINUX=disabled" /etc/selinux/config; then
+    read -r -p "SELinux was set to 'disabled'. Do you want to set it back to 'enforcing' (y/N)? " CONFIRM_SELINUX
+    if [[ "$CONFIRM_SELINUX" =~ ^[Yy]$ ]]; then
+        sed -i 's/SELINUX=disabled/SELINUX=enforcing/g' /etc/selinux/config
+        echo "SELinux set to 'enforcing'."
+        touch /.autorelabel
+        echo "Filesystem will be relabeled on next boot. A reboot is required for full effect."
+    else
+        echo "SELinux setting retained as 'disabled'."
+    fi
+elif grep -q "SELINUX=permissive" /etc/selinux/config; then
     read -r -p "SELinux was set to 'permissive'. Do you want to set it back to 'enforcing' (y/N)? " CONFIRM_SELINUX
     if [[ "$CONFIRM_SELINUX" =~ ^[Yy]$ ]]; then
         sed -i 's/SELINUX=permissive/SELINUX=enforcing/g' /etc/selinux/config
