@@ -1,4 +1,31 @@
-# CyberPanel Uninstallation Script for AlmaLinux
+<a id="readme-top"></a>
+
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+
+<div align="center">
+  <h1>CyberPanel Uninstaller</h1>
+  <p>Unofficial uninstaller for CyberPanel on AlmaLinux — the company never shipped one.</p>
+  <p>
+    <a href="https://github.com/AMDphreak/cyberpanel-uninstaller/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/AMDphreak/cyberpanel-uninstaller/issues">Request Feature</a>
+  </p>
+</div>
+
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li><a href="#about-the-project">About The Project</a></li>
+    <li><a href="#installation">Installation</a></li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ol>
+</details>
+
+## About The Project
 
 This document provides instructions for safely downloading and executing a script designed to uninstall CyberPanel and its associated components from an AlmaLinux server.
 
@@ -9,9 +36,7 @@ This document provides instructions for safely downloading and executing a scrip
 - Understand Each Step: Familiarize yourself with each command and action the script performs. If you are unsure about any part, please seek assistance from an experienced system administrator.
 - Dedicated Server Recommended: For critical production environments, a full operating system reinstallation is often the most secure and cleanest way to remove complex control panels. This script is provided as a detailed manual alternative.
 
-## How to Download and Run the Script
-
-Follow these steps carefully to use the uninstallation script:
+## Installation
 
 1. Download the Script:
    Connect to your AlmaLinux server via SSH as a user with sudo privileges. Then, use curl to download the script directly from the GitHub repository.
@@ -37,6 +62,8 @@ Follow these steps carefully to use the uninstallation script:
    less uninstall_cyberpanel.sh
    ```
 
+## Usage
+
 4. Run the Script:
    Execute the script using sudo su - to ensure it runs with proper root privileges and a clean environment.
 
@@ -56,3 +83,23 @@ Follow these steps carefully to use the uninstallation script:
    If you choose not to reboot immediately, remember to do so at your earliest convenience to complete the uninstallation process effectively.
 
 *Disclaimer*: This script is provided "as is" without warranty of any kind. Use it at your own risk. The author (amdphreak) and Gemini are not responsible for any damage or data loss that may occur from its use.
+
+## Contact
+
+Ryan Johnson — [@amdphreak](https://twitter.com/amdphreak)
+
+Project Link: https://github.com/AMDphreak/cyberpanel-uninstaller
+
+Site: https://ryanjohnson.dev
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/AMDphreak/cyberpanel-uninstaller.svg?style=for-the-badge
+[contributors-url]: https://github.com/AMDphreak/cyberpanel-uninstaller/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/AMDphreak/cyberpanel-uninstaller.svg?style=for-the-badge
+[forks-url]: https://github.com/AMDphreak/cyberpanel-uninstaller/network/members
+[stars-shield]: https://img.shields.io/github/stars/AMDphreak/cyberpanel-uninstaller.svg?style=for-the-badge
+[stars-url]: https://github.com/AMDphreak/cyberpanel-uninstaller/stargazers
+[issues-shield]: https://img.shields.io/github/issues/AMDphreak/cyberpanel-uninstaller.svg?style=for-the-badge
+[issues-url]: https://github.com/AMDphreak/cyberpanel-uninstaller/issues
